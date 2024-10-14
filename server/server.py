@@ -1,104 +1,129 @@
 from flask import Flask, jsonify
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient
 import time
+import math
 
 app = Flask(__name__)
 
-# Константа для розміру зони
-ZONE_SIZE = 5.0  # Зона розміром 5x5 метрів
+ZONE_SIZE = 10.0  # Зона розміром 10x10 метрів
 SENSOR_THRESHOLD_DISTANCE = 0.5  # Мінімальна відстань для виявлення об'єкта
+MAX_ITERATIONS = 9
+
+# Глобальний список для збереження сенсорів та даних
+sensor_handles = []
+all_sensor_data = []
 
 @app.route('/start', methods=['GET'])
 def start_simulation():
     try:
-        # Підключаємося до CoppeliaSim через Remote API
         client = RemoteAPIClient()
         sim = client.require('sim')
-        
-        # Завантажуємо порожню сцену
+
         sim.loadScene('')  # Порожня сцена
 
-        # Створюємо стіни навколо зони (квадратна зона)
-        wall_thickness = 0.1  # Товщина стін 10 см
-        wall_height = 1.0  # Висота стін 1 м
+        # Створюємо стіни
+        create_walls(sim)
 
-        # Ліва стіна
-        left_wall_handle = sim.createPureShape(0, 16, [wall_thickness, ZONE_SIZE, wall_height], 0.0)
-        sim.setObjectPosition(left_wall_handle, -1, [-ZONE_SIZE/2, 0, wall_height/2])
+        # Створюємо куби як перешкоди
+        create_obstacles(sim)
 
-        # Права стіна
-        right_wall_handle = sim.createPureShape(0, 16, [wall_thickness, ZONE_SIZE, wall_height], 0.0)
-        sim.setObjectPosition(right_wall_handle, -1, [ZONE_SIZE/2, 0, wall_height/2])
-
-        # Передня стіна
-        front_wall_handle = sim.createPureShape(0, 16, [ZONE_SIZE, wall_thickness, wall_height], 0.0)
-        sim.setObjectPosition(front_wall_handle, -1, [0, ZONE_SIZE/2, wall_height/2])
-
-        # Задня стіна
-        back_wall_handle = sim.createPureShape(0, 16, [ZONE_SIZE, wall_thickness, wall_height], 0.0)
-        sim.setObjectPosition(back_wall_handle, -1, [0, -ZONE_SIZE/2, wall_height/2])
-
-        # Завантажуємо модель робота Pioneer P3DX
-        pioneer_handle = sim.loadModel('C:/Program Files/CoppeliaRobotics/CoppeliaSimEdu/models/robots/mobile/pioneer p3dx.ttm')
-
-        # Отримуємо хендли двигунів робота
-        left_motor_handle = sim.getObject('/PioneerP3DX/leftMotor')
-        right_motor_handle = sim.getObject('/PioneerP3DX/rightMotor')
-
-        # Додаємо куб перед роботом для сканування
-        cube_handle = sim.createPureShape(0, 16, [0.2, 0.2, 0.2], 0.0)  # Створюємо куб (0.2 м по кожній осі)
-        sim.setObjectPosition(cube_handle, -1, [1.0, 0.0, 0.2])  # Розміщуємо куб на 1 м перед роботом
-
-        # Отримуємо хендли ультразвукових сенсорів (ultrasonicSensor[1] ... ultrasonicSensor[10])
-        ultrasonic_sensors = []
-        for i in range(1, 11):  # Assuming 10 ultrasonic sensors are named /PioneerP3DX/ultrasonicSensor[1], etc.
-            sensor_handle = sim.getObject(f'/PioneerP3DX/ultrasonicSensor[{i}]')
-            ultrasonic_sensors.append(sensor_handle)
-        
-        # Запускаємо симуляцію
         sim.startSimulation()
 
-        # Рухаємо робота вперед
-        sim.setJointTargetVelocity(left_motor_handle, 2.0)  # Ліве колесо вперед
-        sim.setJointTargetVelocity(right_motor_handle, 2.0)  # Праве колесо вперед
+        for iteration in range(MAX_ITERATIONS):
+            # Видаляємо попередні сенсори
+            remove_previous_sensors(sim)
 
-        # Продовжуємо рух робота, поки не завершено сканування
-        scanning_complete = False
-        sensor_data = []
+            # Створюємо сенсори
+            num_sensors = 3 + (iteration % 4)  # Кількість сенсорів від 3 до 6
+            create_sensors(sim, num_sensors)
 
-        while not scanning_complete:
-            current_sensor_data = {}
-            all_sensors_detected = True  # Перевіримо, чи всі сенсори виявили об'єкти
+            # Збираємо дані сканування
+            sensor_data = scan_environment(sim)
+            all_sensor_data.append(sensor_data)
 
-            for i, sensor in enumerate(ultrasonic_sensors):
-                result, distance_data, *_ = sim.readProximitySensor(sensor)  # Отримуємо результат сканування
-                if result > 0 and distance_data < SENSOR_THRESHOLD_DISTANCE:
-                    current_sensor_data[f"sensor_{i+1}"] = distance_data
-                else:
-                    current_sensor_data[f"sensor_{i+1}"] = None
-                    all_sensors_detected = False  # Якщо хоча б один сенсор не знайшов об'єкта, продовжуємо
+            time.sleep(1)  # Затримка між ітераціями
 
-            sensor_data.append(current_sensor_data)
-            
-            # Перевіряємо, чи всі сенсори виявили об'єкти
-            if all_sensors_detected:
-                scanning_complete = True  # Завершуємо рух, якщо всі сенсори знайшли об'єкти
-
-            time.sleep(1)  # Затримка на 1 секунду між зчитуваннями
-
-        # Зупиняємо рух робота після завершення сканування
-        sim.setJointTargetVelocity(left_motor_handle, 0.0)
-        sim.setJointTargetVelocity(right_motor_handle, 0.0)
-        
-        # Зупиняємо симуляцію
         sim.stopSimulation()
-        
-        # Відповідаємо успішно з результатами сканування
-        return jsonify({"status": "Pioneer P3DX completed scan", "sensor_data": sensor_data}), 200
+        return jsonify({"status": "Scan complete", "sensor_data": all_sensor_data}), 200
 
     except Exception as e:
-        # Якщо виникла помилка, відправляємо її як відповідь
         return jsonify({"status": "Error", "message": str(e)}), 500
+
+
+def create_walls(sim):
+    wall_thickness = 0.1
+    wall_height = 1.0
+
+    left_wall = sim.createPureShape(0, 16, [wall_thickness, ZONE_SIZE, wall_height], 0.0)
+    sim.setObjectPosition(left_wall, -1, [-ZONE_SIZE / 2, 0, wall_height / 2])
+
+    right_wall = sim.createPureShape(0, 16, [wall_thickness, ZONE_SIZE, wall_height], 0.0)
+    sim.setObjectPosition(right_wall, -1, [ZONE_SIZE / 2, 0, wall_height / 2])
+
+    front_wall = sim.createPureShape(0, 16, [ZONE_SIZE, wall_thickness, wall_height], 0.0)
+    sim.setObjectPosition(front_wall, -1, [0, ZONE_SIZE / 2, wall_height / 2])
+
+    back_wall = sim.createPureShape(0, 16, [ZONE_SIZE, wall_thickness, wall_height], 0.0)
+    sim.setObjectPosition(back_wall, -1, [0, -ZONE_SIZE / 2, wall_height / 2])
+
+
+def create_obstacles(sim):
+    obstacle_positions = [
+        [1.0, 1.0, 0.2],
+        [-1.0, 1.0, 0.2],
+        [1.0, -1.0, 0.2],
+        [-1.0, -1.0, 0.2],
+        [0.4, 0.3, 0.2]
+    ]
+
+    for pos in obstacle_positions:
+        cube = sim.createPureShape(0, 16, [0.5, 0.5, 0.5], 0.0)
+        sim.setObjectPosition(cube, -1, pos)
+
+
+def create_sensors(sim, num_sensors):
+    global sensor_handles
+    angle_step = 2 * math.pi / num_sensors  # Крок кута між сенсорами
+    sensor_position = [0, 0, 0.1]  # Всі сенсори в одній точці
+
+    for i in range(num_sensors):
+        sensor_type = sim.proximitysensor_ray_subtype  # Тип сенсора
+        int_params = [32, 32, 0, 0, 0, 0, 0, 0]  # Параметри
+        float_params = [0, 20, 0, 0, 0, 0, 0, 1, 1, math.pi / 2, 0, 0, 0.1, 0, 0]  # Дальність = 20, Кут = 90 градусів
+
+        sensor_handle = sim.createProximitySensor(sensor_type, 16, 0, int_params, float_params)
+
+        # Встановлюємо сенсори в одній точці, але орієнтовані по колу
+        sim.setObjectPosition(sensor_handle, -1, sensor_position)
+        sim.setObjectOrientation(sensor_handle, -1, [0, math.pi / 2, i * angle_step])  # Орієнтуємо горизонтально по колу
+
+        sensor_handles.append(sensor_handle)
+
+
+
+def remove_previous_sensors(sim):
+    global sensor_handles
+    for sensor in sensor_handles:
+        try:
+            sim.removeObject(sensor)
+        except:
+            print(sensor)
+    sensor_handles = []
+
+
+
+def scan_environment(sim):
+    sensor_data = []
+
+    for sensor_handle in sensor_handles:
+        result, distance_data, *_ = sim.readProximitySensor(sensor_handle)
+        if result > 0:
+            sensor_data.append(distance_data)
+        else:
+            sensor_data.append(None)
+
+    return sensor_data
+
 
 if __name__ == '__main__':
     app.run(debug=True)
