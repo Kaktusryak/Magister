@@ -48,35 +48,7 @@ def start_simulation():
         sim.stopSimulation()
 
         ##########################################
-        # Підготуємо дані для візуалізації
-        distances = []
-        for measurement in sensor_data:
-            distances.append([d for d in measurement if d is not None])  # Вибираємо тільки ненульові значення
-
-        # Підготуємо дані для графіка
-        labels = [f'Iteration {i+1}' for i in range(len(distances))]
-        max_length = max(len(d) for d in distances)
-        distances_padded = [d + [0]*(max_length - len(d)) for d in distances]  # Додаємо нулі для вирівнювання
-
-        # Створення стовпчикової діаграми
-        x = np.arange(len(labels))
-        width = 0.15  # Ширина стовпців
-
-        # Створюємо графік
-        fig, ax = plt.subplots()
-        for i in range(max_length):
-            values = [dist[i] if i < len(dist) else 0 for dist in distances_padded]
-            ax.bar(x + i * width, values, width, label=f'Distance {i+1}')
-
-        # Налаштування графіка
-        ax.set_ylabel('Distance')
-        ax.set_title('Sensor Distances to Objects')
-        ax.set_xticks(x + width * (max_length - 1) / 2)
-        ax.set_xticklabels(labels)
-        ax.legend()
-
-        plt.tight_layout()
-        plt.show()
+       
         return jsonify({"status": "Scan complete", "sensor_data": all_sensor_data}), 200
 
     except Exception as e:
