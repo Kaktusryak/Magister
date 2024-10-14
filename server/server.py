@@ -2,6 +2,8 @@ from flask import Flask, jsonify
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient
 import time
 import math
+import numpy as np
+import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
@@ -44,6 +46,37 @@ def start_simulation():
             time.sleep(3)  # Затримка між ітераціями
 
         sim.stopSimulation()
+
+        ##########################################
+        # Підготуємо дані для візуалізації
+        distances = []
+        for measurement in sensor_data:
+            distances.append([d for d in measurement if d is not None])  # Вибираємо тільки ненульові значення
+
+        # Підготуємо дані для графіка
+        labels = [f'Iteration {i+1}' for i in range(len(distances))]
+        max_length = max(len(d) for d in distances)
+        distances_padded = [d + [0]*(max_length - len(d)) for d in distances]  # Додаємо нулі для вирівнювання
+
+        # Створення стовпчикової діаграми
+        x = np.arange(len(labels))
+        width = 0.15  # Ширина стовпців
+
+        # Створюємо графік
+        fig, ax = plt.subplots()
+        for i in range(max_length):
+            values = [dist[i] if i < len(dist) else 0 for dist in distances_padded]
+            ax.bar(x + i * width, values, width, label=f'Distance {i+1}')
+
+        # Налаштування графіка
+        ax.set_ylabel('Distance')
+        ax.set_title('Sensor Distances to Objects')
+        ax.set_xticks(x + width * (max_length - 1) / 2)
+        ax.set_xticklabels(labels)
+        ax.legend()
+
+        plt.tight_layout()
+        plt.show()
         return jsonify({"status": "Scan complete", "sensor_data": all_sensor_data}), 200
 
     except Exception as e:
@@ -85,26 +118,21 @@ def create_sensors(sim, num_sensors):
     global sensor_handles
     angle_step = 2 * math.pi / num_sensors  # Крок кута між сенсорами
     sensor_position = [0, 0, 0.1]  # Всі сенсори в одній точці
-
     for i in range(num_sensors):
-        sensor_type = sim.proximitysensor_ray_subtype  # Тип сенсора
-        int_params = [32, 32, 0, 0, 0, 0, 0, 0]  # Параметри
-        float_params = [0, 20, 0, 0, 0, 0, 0, 1, 1, math.pi / 2, 0, 0, 0.1, 0, 0]  # Дальність = 20, Кут = 90 градусів
-
+        sensor_type = sim.proximitysensor_ray_subtype  # Type of sensor
+        int_params = [32, 32, 0, 0, 0, 0, 0, 0]  # Sensor parameters
+        float_params = [0, 20, 0, 0, 0, 0, 0, 1, 1, math.pi / 2, 0, 0, 0.1, 0, 0]  # Range and FOV parameters
+        # Create the proximity sensor
         sensor_handle = sim.createProximitySensor(sensor_type, 16, 0, int_params, float_params)
-
-        # Встановлюємо сенсори в одній точці, але орієнтовані по колу
-        sim.setObjectPosition(sensor_handle, -1, sensor_position)
-        print(i * angle_step)
-        print(math.pi / 2)
-        print('--------------')
-        # sim.setObjectOrientation(sensor_handle, [0, math.pi/2, 0])  # Орієнтуємо горизонтально по колу
-        # sim.setObjectOrientation(sensor_handle, [0, 0, i * angle_step])  # Орієнтуємо горизонтально по колу
-        sim.setObjectOrientation(sensor_handle, [-math.pi/2, 0, i * angle_step])  # Повертаємо на 90 градусів по X
-
-        #x y z
-
+        # Set the sensor's position (all sensors in the same position)
+        sim.setObjectPosition(sensor_handle, sensor_position)
+        # Rotate the sensor around the global Z-axis
+        print( sim.handle_world)
+        sim.setObjectOrientation(sensor_handle, [math.pi / 2, i * angle_step, 0])
+        # Store the sensor handle
         sensor_handles.append(sensor_handle)
+
+
 
 
 
