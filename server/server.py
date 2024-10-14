@@ -41,7 +41,7 @@ def start_simulation():
             sensor_data = scan_environment(sim)
             all_sensor_data.append(sensor_data)
 
-            time.sleep(1)  # Затримка між ітераціями
+            time.sleep(3)  # Затримка між ітераціями
 
         sim.stopSimulation()
         return jsonify({"status": "Scan complete", "sensor_data": all_sensor_data}), 200
@@ -95,7 +95,14 @@ def create_sensors(sim, num_sensors):
 
         # Встановлюємо сенсори в одній точці, але орієнтовані по колу
         sim.setObjectPosition(sensor_handle, -1, sensor_position)
-        sim.setObjectOrientation(sensor_handle, -1, [0, math.pi / 2, i * angle_step])  # Орієнтуємо горизонтально по колу
+        print(i * angle_step)
+        print(math.pi / 2)
+        print('--------------')
+        # sim.setObjectOrientation(sensor_handle, [0, math.pi/2, 0])  # Орієнтуємо горизонтально по колу
+        # sim.setObjectOrientation(sensor_handle, [0, 0, i * angle_step])  # Орієнтуємо горизонтально по колу
+        sim.setObjectOrientation(sensor_handle, [-math.pi/2, 0, i * angle_step])  # Повертаємо на 90 градусів по X
+
+        #x y z
 
         sensor_handles.append(sensor_handle)
 
