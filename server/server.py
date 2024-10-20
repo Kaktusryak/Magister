@@ -1,9 +1,11 @@
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
+import random
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient
 import time
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import threading
 
 app = Flask(__name__)
 
@@ -14,6 +16,44 @@ MAX_ITERATIONS = 9
 # Глобальний список для збереження сенсорів та даних
 sensor_handles = []
 all_sensor_data = []
+
+
+@app.route('/start_mapping', methods=['POST'])
+def start_mapping():
+    try:
+        client = RemoteAPIClient()
+        sim = client.require('sim')
+
+        sim.loadScene('C:/Users/denis/Desktop/Diploma/scene/SLAM.ttt')
+
+        request_data = request.get_json()
+        print(request_data)
+
+        dencity = request_data['dencity']
+        create_obstacles(sim, dencity)
+
+        sim.startSimulation()
+
+        camera_handle = sim.getObjectHandle('Vision_sensor')
+        print(camera_handle)
+
+        # Start a new thread for saving images
+        image_saving_thread = threading.Thread(target=save_images, args=(sim, camera_handle, 30))
+        image_saving_thread.start()
+
+        time.sleep(30)
+
+        
+
+        # data=sim.getStringSignal("measuredDataAtThisTime")
+        # print(data)
+        # measuredData=sim.unpackFloatTable(data)
+
+        sim.stopSimulation()
+        # return jsonify({ "status": "Scan complete", "data": measuredData }), 200
+        return jsonify({ "status": "Scan complete" }), 200
+    except Exception as e:
+        return jsonify({ "status": "Error", "message": str(e) }), 500
 
 @app.route('/start', methods=['GET'])
 def start_simulation():
@@ -55,6 +95,17 @@ def start_simulation():
         return jsonify({"status": "Error", "message": str(e)}), 500
 
 
+def save_images(sim, camera_handle, times):
+    i = 0
+    while i < times:
+        try:
+            i = i + 1
+            imageBuffer, resolutionX, resolutionY = sim.getVisionSensorCharImage(camera_handle)
+            sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/images/imageTest{i}.png', 100)
+            time.sleep(1)  # Wait for 1 second before capturing the next image
+        except Exception as e:
+            print(e)
+
 def create_walls(sim):
     wall_thickness = 0.1
     wall_height = 1.0
@@ -72,18 +123,130 @@ def create_walls(sim):
     sim.setObjectPosition(back_wall, -1, [0, -ZONE_SIZE / 2, wall_height / 2])
 
 
-def create_obstacles(sim):
+def create_obstacles(sim, dencity):
+
+    colors = [
+        [1, 0, 0],   # Red
+        [0, 1, 0],   # Green
+        [0, 0, 1],   # Blue
+        [1, 1, 0],   # Yellow
+        [0, 1, 1],   # Cyan
+        [1, 0, 1],   # Magenta
+        [1, 0.5, 0], # Orange
+        [0.5, 0, 0.5] # Purple
+    ]
+
     obstacle_positions = [
         [1.0, 1.0, 0.2],
         [-1.0, 1.0, 0.2],
         [1.0, -1.0, 0.2],
         [-1.0, -1.0, 0.2],
-        [0.4, 0.3, 0.2]
+        [0.4, 0.3, 0.2],
     ]
+
+    
+
+    if (dencity == 1):
+        obstacle_positions = [
+            [1.0, 1.0, 0.2],  # Перешкода в межах 1 метра від початкової позиції
+            [-1.0, 1.0, 0.2],  # Перешкода в межах 1 метра
+            [1.0, -1.0, 0.2],  # Перешкода в межах 1 метра
+            [-1.0, -1.0, 0.2],  # Перешкода в межах 1 метра
+            [0.4, 0.3, 0.2],  # Перешкода ближче до центру
+            # Додаємо нові перешкоди для сцени 15x15:
+            [5.0, 5.0, 0.2],  # Перешкода в правому верхньому куті
+            [-5.0, 5.0, 0.2],  # Перешкода в лівому верхньому куті
+            [5.0, -5.0, 0.2],  # Перешкода в правому нижньому куті
+            [-5.0, -5.0, 0.2],  # Перешкода в лівому нижньому куті
+            [3.0, 3.0, 0.2],  # Перешкода трохи далі від центру
+            [-3.0, -3.0, 0.2],  # Перешкода на протилежній стороні
+            [4.5, -4.5, 0.2],  # Перешкода ближче до краю сцени
+            [-4.5, 0.5, 0.2],  # Перешкода біля протилежного краю[3.0, 3.0, 0.2],  # Перешкода трохи далі від центру
+            [-3.0, 0.0, 0.2],  # Перешкода на протилежній стороні
+            [4.5, 1.5, 0.2],  # Перешкода ближче до краю сцени
+            [-4.5, 0.5, 0.2],  # Перешкода біля протилежного краю
+        ]
+    elif (dencity == 2):
+        obstacle_positions = [
+            [1.0, 1.0, 0.2],  # Перешкода в межах 1 метра від початкової позиції
+            [-1.0, 1.0, 0.2],  # Перешкода в межах 1 метра
+            [1.0, -1.0, 0.2],  # Перешкода в межах 1 метра
+            [-1.0, -1.0, 0.2],  # Перешкода в межах 1 метра
+            [0.4, 0.3, 0.2],  # Перешкода ближче до центру
+            [5.0, 5.0, 0.2],  # Перешкода в правому верхньому куті
+            [-5.0, 5.0, 0.2],  # Перешкода в лівому верхньому куті
+            [5.0, -5.0, 0.2],  # Перешкода в правому нижньому куті
+            [-5.0, -5.0, 0.2],  # Перешкода в лівому нижньому куті
+            [3.0, 3.0, 0.2],  # Перешкода трохи далі від центру
+            [-3.0, -3.0, 0.2],  # Перешкода на протилежній стороні
+            [4.5, -4.5, 0.2],  # Перешкода ближче до краю сцени
+            [-5, 0.5, 0.2],  # Перешкода біля протилежного краю
+            [-5.0, 0.0, 0.2],  # Перешкода на протилежній стороні
+            [4.5, 1.5, 0.2],  # Перешкода ближче до краю сцени
+            [-5.5, 0.5, 0.2],  # Перешкода біля протилежного краю
+            # Додаткові перешкоди
+            [2.0, 2.0, 0.2],  # Додаткова перешкода в центрі
+            [-2.0, 2.0, 0.2],  # Додаткова перешкода
+            [2.0, -2.0, 0.2],  # Додаткова перешкода
+            [-2.0, -2.0, 0.2],  # Додаткова перешкода
+            [6.0, 6.0, 0.2],  # Додаткова перешкода в правому верхньому куті
+            [-6.0, 6.0, 0.2],  # Додаткова перешкода в лівому верхньому куті
+            [6.0, -6.0, 0.2],  # Додаткова перешкода в правому нижньому куті
+            [-6.0, -6.0, 0.2],  # Додаткова перешкода в лівому нижньому куті
+            [3.5, 3.5, 0.2],  # Додаткова перешкода трохи далі від центру
+            [-3.5, -3.5, 0.2],  # Додаткова перешкода на протилежній стороні
+        ]
+    elif (dencity == 3):
+        obstacle_positions = [
+            [1.0, 1.0, 0.2],  # Перешкода в межах 1 метра від початкової позиції
+            [-1.0, 1.0, 0.2],  # Перешкода в межах 1 метра
+            [1.0, -1.0, 0.2],  # Перешкода в межах 1 метра
+            [-1.0, -1.0, 0.2],  # Перешкода в межах 1 метра
+            [0.4, 0.3, 0.2],  # Перешкода ближче до центру
+            [5.0, 5.0, 0.2],  # Перешкода в правому верхньому куті
+            [-5.0, 5.0, 0.2],  # Перешкода в лівому верхньому куті
+            [5.0, -5.0, 0.2],  # Перешкода в правому нижньому куті
+            [-5.0, -5.0, 0.2],  # Перешкода в лівому нижньому куті
+            [3.0, 3.0, 0.2],  # Перешкода трохи далі від центру
+            [-3.0, -3.0, 0.2],  # Перешкода на протилежній стороні
+            [4.5, -4.5, 0.2],  # Перешкода ближче до краю сцени
+            [-5.5, 0.5, 0.2],  # Перешкода біля протилежного краю
+            [-3.0, 0.0, 0.2],  # Перешкода на протилежній стороні
+            [4.5, 1.5, 0.2],  # Перешкода ближче до краю сцени
+            [-4.5, 3, 0.2],  # Перешкода біля протилежного краю
+            # Додаткові перешкоди
+            [2.0, 2.0, 0.2],  # Додаткова перешкода в центрі
+            [-3.0, 3.0, 0.2],  # Додаткова перешкода
+            [2.0, -2.0, 0.2],  # Додаткова перешкода
+            [-2.0, -2.0, 0.2],  # Додаткова перешкода
+            [4.0, 3.0, 0.2],  # Додаткова перешкода в правому верхньому куті
+            [-2.0, 3.0, 0.2],  # Додаткова перешкода в лівому верхньому куті
+            [4.0, -4.0, 0.2],  # Додаткова перешкода в правому нижньому куті
+            [-4.5, -3.0, 0.2],  # Додаткова перешкода в лівому нижньому куті
+            [3.5, 3.5, 0.2],  # Додаткова перешкода трохи далі від центру
+            [-3.5, -3.5, 0.2],  # Додаткова перешкода на протилежній стороні
+            [3.5, -3.5, 0.2],  # Додаткова перешкода ближче до краю сцени
+            [-5.5, 0.5, 0.2],  # Додаткова перешкода біля протилежного краю
+            [-3.5, 0.0, 0.2],  # Додаткова перешкода
+            [2.5, 1.5, 0.2],  # Додаткова перешкода ближче до краю
+            [-5.5, 1.0, 0.2],  # Додаткова перешкода біля протилежного краю
+            # Нові перешкоди на серединах сторін
+            [0.0, 5.5, 0.2],  # Перешкода посередині верхньої сторони
+            [0.0, -4.5, 0.2],  # Перешкода посередині нижньої сторони
+            [4.5, 0.0, 0.2],  # Перешкода посередині правої сторони
+            [-3.5, 0.0, 0.2],  # Перешкода посередині лівої сторони
+            [3.0, 3.5, 0.2],  # Додаткова перешкода ближче до центру верхньої сторони
+            [-1.0, -4.5, 0.2],  # Додаткова перешкода ближче до центру нижньої сторони
+            [1.5, 3.0, 0.2],  # Додаткова перешкода ближче до правої сторони
+            [-5.5, -3.0, 0.2],  # Додаткова перешкода ближче до лівої сторони
+        ]
+
 
     for pos in obstacle_positions:
         cube = sim.createPureShape(0, 16, [0.5, 0.5, 0.5], 0.0)
         sim.setObjectPosition(cube, -1, pos)
+        random_color = random.choice(colors)  # Choose a random color from the list
+        sim.setShapeColor(cube, None, sim.colorcomponent_ambient_diffuse, random_color)  # You can modify the index here based on your requirements
 
 
 def create_sensors(sim, num_sensors):
@@ -105,9 +268,6 @@ def create_sensors(sim, num_sensors):
         sensor_handles.append(sensor_handle)
 
 
-
-
-
 def remove_previous_sensors(sim):
     global sensor_handles
     for sensor in sensor_handles:
@@ -116,8 +276,6 @@ def remove_previous_sensors(sim):
         except:
             print(sensor)
     sensor_handles = []
-
-
 
 def scan_environment(sim):
     sensor_data = []
@@ -130,6 +288,8 @@ def scan_environment(sim):
             sensor_data.append(None)
 
     return sensor_data
+
+
 
 
 if __name__ == '__main__':
