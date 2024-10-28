@@ -6,6 +6,9 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 import threading
+from roboflow import Roboflow
+
+
 
 app = Flask(__name__)
 
@@ -21,10 +24,11 @@ all_sensor_data = []
 @app.route('/start_mapping', methods=['POST'])
 def start_mapping():
     try:
+        iterations = 20
         client = RemoteAPIClient()
         sim = client.require('sim')
 
-        sim.loadScene('C:/Users/denis/Desktop/Diploma/scene/SLAM.ttt')
+        sim.loadScene('C:/Users/denis/Desktop/Diploma/Magister/scene/SLAM.ttt')
 
         request_data = request.get_json()
         print(request_data)
@@ -38,10 +42,10 @@ def start_mapping():
         print(camera_handle)
 
         # Start a new thread for saving images
-        image_saving_thread = threading.Thread(target=save_images, args=(sim, camera_handle, 30))
+        image_saving_thread = threading.Thread(target=save_images, args=(sim, camera_handle, iterations))
         image_saving_thread.start()
 
-        time.sleep(30)
+        time.sleep(iterations)
 
         
 
@@ -50,8 +54,9 @@ def start_mapping():
         # measuredData=sim.unpackFloatTable(data)
 
         sim.stopSimulation()
+        prediction = objectDetection()
         # return jsonify({ "status": "Scan complete", "data": measuredData }), 200
-        return jsonify({ "status": "Scan complete" }), 200
+        return jsonify({ "status": "Scan complete", "prediction": prediction }), 200
     except Exception as e:
         return jsonify({ "status": "Error", "message": str(e) }), 500
 
@@ -95,13 +100,26 @@ def start_simulation():
         return jsonify({"status": "Error", "message": str(e)}), 500
 
 
+def objectDetection():
+    rf = Roboflow(api_key="AxJQTHdmCRqWytYDXxOs")
+    project = rf.workspace().project("tank-detection-82r6q")
+    model = project.version(1).model
+    model.predict('C:/Users/denis/Desktop/Diploma/Magister/images/imageTest3.png', confidence=40, overlap=30).save('C:/Users/denis/Desktop/Diploma/Magister/images/prediction_imageTest3.png')
+    result = model.predict('C:/Users/denis/Desktop/Diploma/Magister/images/imageTest3.png', confidence=40, overlap=30).json()
+    print('OD')
+    return result
+
 def save_images(sim, camera_handle, times):
     i = 0
     while i < times:
         try:
             i = i + 1
             imageBuffer, resolutionX, resolutionY = sim.getVisionSensorCharImage(camera_handle)
-            sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/images/imageTest{i}.png', 100)
+            sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', 100)
+
+            if i == 7:
+                print(sim.simGridMap.getPoints(0.5))
+
             time.sleep(1)  # Wait for 1 second before capturing the next image
         except Exception as e:
             print(e)
