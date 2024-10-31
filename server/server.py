@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import threading
 from roboflow import Roboflow
+from queue import Queue
 
 
 
@@ -22,30 +23,34 @@ all_sensor_data = []
 
 
 @app.route('/start_mapping', methods=['POST'])
-def start_mapping():
+async def start_mapping():
     try:
-        iterations = 20
         client = RemoteAPIClient()
         sim = client.require('sim')
 
         sim.loadScene('C:/Users/denis/Desktop/Diploma/Magister/scene/SLAM.ttt')
 
+        position_queue = Queue()
+
         request_data = request.get_json()
         print(request_data)
 
         dencity = request_data['dencity']
+        workingTime = request_data['time']
         create_obstacles(sim, dencity)
 
         sim.startSimulation()
 
         camera_handle = sim.getObjectHandle('Vision_sensor')
+        robot_handle = sim.getObjectHandle('Pioneer_p3dx')
         print(camera_handle)
+        print(robot_handle)
 
         # Start a new thread for saving images
-        image_saving_thread = threading.Thread(target=save_images, args=(sim, camera_handle, iterations))
+        image_saving_thread = threading.Thread(target=save_images, args=(sim, camera_handle, robot_handle, workingTime, position_queue))
         image_saving_thread.start()
 
-        time.sleep(iterations)
+        time.sleep(workingTime)
 
         
 
@@ -54,9 +59,10 @@ def start_mapping():
         # measuredData=sim.unpackFloatTable(data)
 
         sim.stopSimulation()
-        prediction = objectDetection()
+        time.sleep(1)
+        predictions = await objectDetection(workingTime)
         # return jsonify({ "status": "Scan complete", "data": measuredData }), 200
-        return jsonify({ "status": "Scan complete", "prediction": prediction }), 200
+        return jsonify({ "status": "Scan complete", "predictions": predictions, "positions": position_queue.get() }), 200
     except Exception as e:
         return jsonify({ "status": "Error", "message": str(e) }), 500
 
@@ -100,29 +106,39 @@ def start_simulation():
         return jsonify({"status": "Error", "message": str(e)}), 500
 
 
-def objectDetection():
+async def objectDetection(times):
     rf = Roboflow(api_key="AxJQTHdmCRqWytYDXxOs")
     project = rf.workspace().project("tank-detection-82r6q")
     model = project.version(1).model
-    model.predict('C:/Users/denis/Desktop/Diploma/Magister/images/imageTest3.png', confidence=40, overlap=30).save('C:/Users/denis/Desktop/Diploma/Magister/images/prediction_imageTest3.png')
-    result = model.predict('C:/Users/denis/Desktop/Diploma/Magister/images/imageTest3.png', confidence=40, overlap=30).json()
-    print('OD')
-    return result
+    results = []
+    for i in range(1, times + 1):
+            model.predict(f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', confidence=40, overlap=30).save(f'C:/Users/denis/Desktop/Diploma/Magister/images/prediction_imageTest{i}.png')
+            result = model.predict(f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', confidence=40, overlap=30).json()
+            results.append(result)
 
-def save_images(sim, camera_handle, times):
+    print('OD')
+    return results
+
+
+def save_images(sim, camera_handle, robot_handle, times, position_queue):
+    positions = []
     i = 0
     while i < times:
         try:
             i = i + 1
+
+            position = sim.getObjectPosition(robot_handle)
+            positions.append(position)
+
             imageBuffer, resolutionX, resolutionY = sim.getVisionSensorCharImage(camera_handle)
             sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', 100)
-
-            if i == 7:
-                print(sim.simGridMap.getPoints(0.5))
-
+            
+            position_queue.put(positions)
             time.sleep(1)  # Wait for 1 second before capturing the next image
         except Exception as e:
             print(e)
+    return positions
+
 
 def create_walls(sim):
     wall_thickness = 0.1

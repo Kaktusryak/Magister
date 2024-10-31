@@ -1,0 +1,22 @@
+<section>
+    <form action="" [formGroup]="form">
+        <mat-form-field formControlName="dencity">
+            <mat-label>Dencity</mat-label>
+            <mat-select>
+                @for (option of dencityOptions; track option) {
+                <mat-option [value]="option.value">{{ option.displayValue }}</mat-option>
+                }
+            </mat-select>
+        </mat-form-field>
+        <mat-form-field formControlName="time">
+            <mat-label>Time</mat-label>
+            <input mat-input type="number" />
+            @if (form.get('time')) {
+            <button matSuffix mat-icon-button aria-label="Clear">
+                <mat-icon>close</mat-icon>
+            </button>
+            }
+        </mat-form-field>
+    </form>
+    <button (click)="getForm()">GET</button>
+</section>
