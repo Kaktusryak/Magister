@@ -1,22 +1,59 @@
 <section>
-    <form action="" [formGroup]="form">
-        <mat-form-field formControlName="dencity">
-            <mat-label>Dencity</mat-label>
-            <mat-select>
-                @for (option of dencityOptions; track option) {
-                <mat-option [value]="option.value">{{ option.displayValue }}</mat-option>
+    <div class="form-container">
+        <mat-card>
+            <mat-card-header>
+                Recommended parameters
+            </mat-card-header>
+            <mat-card-content>
+                <mat-list>
+                    <mat-list-item>
+                        Dencity: {{ dencityOptions[2].displayValue || '' }}
+                    </mat-list-item>
+                    <mat-list-item>
+                        Time: 30 seconds
+                    </mat-list-item>
+                </mat-list>
+            </mat-card-content>
+        </mat-card>
+        <form action="" [formGroup]="form">
+            <mat-form-field >
+                <mat-label>Dencity</mat-label>
+                <mat-select formControlName="dencity">
+                    @for (option of dencityOptions; track option) {
+                    <mat-option [value]="option.value">{{ option.displayValue }}</mat-option>
+                    }
+                </mat-select>
+            </mat-form-field>
+            <mat-form-field >
+                <mat-label>Time</mat-label>
+                <input matInput type="number" formControlName="time"/>
+                @if (form.get('time')) {
+                <button matSuffix mat-icon-button aria-label="Clear" (click)="resetTime()">
+                    <mat-icon>close</mat-icon>
+                </button>
                 }
-            </mat-select>
-        </mat-form-field>
-        <mat-form-field formControlName="time">
-            <mat-label>Time</mat-label>
-            <input mat-input type="number" />
-            @if (form.get('time')) {
-            <button matSuffix mat-icon-button aria-label="Clear">
-                <mat-icon>close</mat-icon>
-            </button>
-            }
-        </mat-form-field>
-    </form>
-    <button (click)="getForm()">GET</button>
+            </mat-form-field>
+        </form>
+        <button mat-fab extended [disabled]="startButtonDisabled" (click)="getForm()">
+            <mat-icon>rocket</mat-icon>
+            Start simulation
+        </button>
+        <button mat-fab extended (click)="getResults()">
+            <mat-icon>result</mat-icon>
+            get pictures test
+        </button>
+
+
+    </div>
+    <div class="results-container">
+        @for (results of resultImages; track results) {
+            <app-result-item 
+                [pictureName]="results"
+            >
+    
+            </app-result-item>
+        }
+    </div>
+
+    
 </section>

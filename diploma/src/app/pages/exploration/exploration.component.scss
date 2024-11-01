@@ -1,3 +1,30 @@
 section {
-    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: start;
+    align-items: center;
+    padding-top: 30px;
+    gap: 10px;
+    min-height: 90vh;
+    background-color: rgb(221, 221, 221);
+}
+
+.form-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 40%;
+    margin-bottom: 20px;
+}
+
+form {
+    display: flex;
+    gap: 10px;
+}
+
+.results-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 60%;
 }

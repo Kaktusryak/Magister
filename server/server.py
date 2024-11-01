@@ -8,10 +8,11 @@ import matplotlib.pyplot as plt
 import threading
 from roboflow import Roboflow
 from queue import Queue
-
+from flask_cors import CORS
 
 
 app = Flask(__name__)
+CORS(app)
 
 ZONE_SIZE = 10.0  # Зона розміром 10x10 метрів
 SENSOR_THRESHOLD_DISTANCE = 0.5  # Мінімальна відстань для виявлення об'єкта
@@ -47,16 +48,19 @@ async def start_mapping():
         print(robot_handle)
 
         # Start a new thread for saving images
-        image_saving_thread = threading.Thread(target=save_images, args=(sim, camera_handle, robot_handle, workingTime, position_queue))
+        image_saving_thread = threading.Thread(
+            target=save_images, 
+            args=(
+                sim, 
+                camera_handle, 
+                robot_handle, 
+                workingTime, 
+                position_queue
+                )
+                )
         image_saving_thread.start()
 
         time.sleep(workingTime)
-
-        
-
-        # data=sim.getStringSignal("measuredDataAtThisTime")
-        # print(data)
-        # measuredData=sim.unpackFloatTable(data)
 
         sim.stopSimulation()
         time.sleep(1)
@@ -65,54 +69,22 @@ async def start_mapping():
         return jsonify({ "status": "Scan complete", "predictions": predictions, "positions": position_queue.get() }), 200
     except Exception as e:
         return jsonify({ "status": "Error", "message": str(e) }), 500
+    
 
-@app.route('/start', methods=['GET'])
-def start_simulation():
-    try:
-        client = RemoteAPIClient()
-        sim = client.require('sim')
-
-        sim.loadScene('')  # Порожня сцена
-
-        # Створюємо стіни
-        create_walls(sim)
-
-        # Створюємо куби як перешкоди
-        create_obstacles(sim)
-
-        sim.startSimulation()
-
-        for iteration in range(MAX_ITERATIONS):
-            # Видаляємо попередні сенсори
-            remove_previous_sensors(sim)
-
-            # Створюємо сенсори
-            num_sensors = 3 + (iteration % 4)  # Кількість сенсорів від 3 до 6
-            create_sensors(sim, num_sensors)
-
-            # Збираємо дані сканування
-            sensor_data = scan_environment(sim)
-            all_sensor_data.append(sensor_data)
-
-            time.sleep(3)  # Затримка між ітераціями
-
-        sim.stopSimulation()
-
-        ##########################################
-       
-        return jsonify({"status": "Scan complete", "sensor_data": all_sensor_data}), 200
-
-    except Exception as e:
-        return jsonify({"status": "Error", "message": str(e)}), 500
+@app.route('/get_images', methods=['GET'])
+def list_images():
+    images = [f"prediction_imageTest{i}.png" for i in range(1, 31)]
+    return jsonify(images)
 
 
 async def objectDetection(times):
     rf = Roboflow(api_key="AxJQTHdmCRqWytYDXxOs")
-    project = rf.workspace().project("tank-detection-82r6q")
+    project = rf.workspace().project("environment_cubes")
     model = project.version(1).model
     results = []
     for i in range(1, times + 1):
-            model.predict(f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', confidence=40, overlap=30).save(f'C:/Users/denis/Desktop/Diploma/Magister/images/prediction_imageTest{i}.png')
+            print(f'image {i}')
+            model.predict(f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', confidence=40, overlap=30).save(f'C:/Users/denis/Desktop/Diploma/Magister/diploma/public/assets/images/prediction_imageTest{i}.png')
             result = model.predict(f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', confidence=40, overlap=30).json()
             results.append(result)
 
@@ -131,30 +103,13 @@ def save_images(sim, camera_handle, robot_handle, times, position_queue):
             positions.append(position)
 
             imageBuffer, resolutionX, resolutionY = sim.getVisionSensorCharImage(camera_handle)
-            sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', 100)
+            sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/Magister/diploma/public/assets/images/imageTest{i}.png', 100)
             
             position_queue.put(positions)
             time.sleep(1)  # Wait for 1 second before capturing the next image
         except Exception as e:
             print(e)
     return positions
-
-
-def create_walls(sim):
-    wall_thickness = 0.1
-    wall_height = 1.0
-
-    left_wall = sim.createPureShape(0, 16, [wall_thickness, ZONE_SIZE, wall_height], 0.0)
-    sim.setObjectPosition(left_wall, -1, [-ZONE_SIZE / 2, 0, wall_height / 2])
-
-    right_wall = sim.createPureShape(0, 16, [wall_thickness, ZONE_SIZE, wall_height], 0.0)
-    sim.setObjectPosition(right_wall, -1, [ZONE_SIZE / 2, 0, wall_height / 2])
-
-    front_wall = sim.createPureShape(0, 16, [ZONE_SIZE, wall_thickness, wall_height], 0.0)
-    sim.setObjectPosition(front_wall, -1, [0, ZONE_SIZE / 2, wall_height / 2])
-
-    back_wall = sim.createPureShape(0, 16, [ZONE_SIZE, wall_thickness, wall_height], 0.0)
-    sim.setObjectPosition(back_wall, -1, [0, -ZONE_SIZE / 2, wall_height / 2])
 
 
 def create_obstacles(sim, dencity):
@@ -281,49 +236,6 @@ def create_obstacles(sim, dencity):
         sim.setObjectPosition(cube, -1, pos)
         random_color = random.choice(colors)  # Choose a random color from the list
         sim.setShapeColor(cube, None, sim.colorcomponent_ambient_diffuse, random_color)  # You can modify the index here based on your requirements
-
-
-def create_sensors(sim, num_sensors):
-    global sensor_handles
-    angle_step = 2 * math.pi / num_sensors  # Крок кута між сенсорами
-    sensor_position = [0, 0, 0.1]  # Всі сенсори в одній точці
-    for i in range(num_sensors):
-        sensor_type = sim.proximitysensor_ray_subtype  # Type of sensor
-        int_params = [32, 32, 0, 0, 0, 0, 0, 0]  # Sensor parameters
-        float_params = [0, 20, 0, 0, 0, 0, 0, 1, 1, math.pi / 2, 0, 0, 0.1, 0, 0]  # Range and FOV parameters
-        # Create the proximity sensor
-        sensor_handle = sim.createProximitySensor(sensor_type, 16, 0, int_params, float_params)
-        # Set the sensor's position (all sensors in the same position)
-        sim.setObjectPosition(sensor_handle, sensor_position)
-        # Rotate the sensor around the global Z-axis
-        print( sim.handle_world)
-        sim.setObjectOrientation(sensor_handle, [math.pi / 2, i * angle_step, 0])
-        # Store the sensor handle
-        sensor_handles.append(sensor_handle)
-
-
-def remove_previous_sensors(sim):
-    global sensor_handles
-    for sensor in sensor_handles:
-        try:
-            sim.removeObject(sensor)
-        except:
-            print(sensor)
-    sensor_handles = []
-
-def scan_environment(sim):
-    sensor_data = []
-
-    for sensor_handle in sensor_handles:
-        result, distance_data, *_ = sim.readProximitySensor(sensor_handle)
-        if result > 0:
-            sensor_data.append(distance_data)
-        else:
-            sensor_data.append(None)
-
-    return sensor_data
-
-
 
 
 if __name__ == '__main__':
