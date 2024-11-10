@@ -1,6 +1,20 @@
 <nav>
-    <a mat-flat-button routerLink="home">Home</a>
-    <a mat-flat-button routerLink="exploration">Exploration</a>
+    <div>
+        <a mat-flat-button routerLink="home">Home</a>
+        <a mat-flat-button routerLink="exploration">Exploration</a>
+    </div>
+    <div>
+        @if (communicationService.username.value) {
+            {{ communicationService.username.value }}
+        }
+        @if (communicationService.isLogged.value) {
+            <button mat-button (click)="unlog()">Unlog</button>
+        }
+        @else {
+            <a mat-flat-button routerLink="auth">Authorization</a>
+        }
+    </div>
+
 </nav>
 <router-outlet>
 

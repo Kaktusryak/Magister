@@ -2,7 +2,10 @@ nav {
     background-color: rgb(143, 143, 143);
     padding: 10px;
     display: flex;
-    justify-content: start;
-    gap: 10px;
+    justify-content: space-between;
     height: 10vh;
+    div {
+        display: flex;
+        gap: 10px;
+    }
 }

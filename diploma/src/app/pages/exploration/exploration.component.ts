@@ -11,11 +11,9 @@ import { combineLatestWith, Subscription } from 'rxjs';
 import { CommunicationService } from '../../services/communication.service';
 import { HttpClientModule } from '@angular/common/http';
 import { ResultItemComponent } from "../../components/result-item/result-item.component";
+import { Result, SelectOptions } from '../../interfaces/interfaces';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
-interface SelectOptions {
-  value: number,
-  displayValue: string
-}
 
 @Component({
   selector: 'app-exploration',
@@ -31,18 +29,19 @@ interface SelectOptions {
     MatCardModule,
     MatListModule,
     HttpClientModule,
-    ResultItemComponent
+    ResultItemComponent,
+    MatProgressSpinnerModule
 ],
   templateUrl: './exploration.component.html',
-  styleUrl: './exploration.component.scss',
-  providers: [CommunicationService]
+  styleUrl: './exploration.component.scss'
 })
 export class ExplorationComponent implements OnInit, OnDestroy {
 
   public startButtonDisabled: boolean = true;
+  public isLoading: boolean = false;
   public resultImages: string[] = [];
 
-  data!: any;
+  data!: Result;
 
   fb = inject(FormBuilder)
   communicationService = inject(CommunicationService)
@@ -79,20 +78,27 @@ export class ExplorationComponent implements OnInit, OnDestroy {
 
   getForm() {
     console.log(this.form.getRawValue());
-    this.communicationService.startSimulation()
-      .pipe(combineLatestWith(this.communicationService.getPictures()))
-      .subscribe(([results, pictures]) => {
+    this.clearData();
+    this.isLoading = true;
+    this.startButtonDisabled = true;
+    this.communicationService.startSimulation(this.form.controls.dencity.value, this.form.controls.time.value)
+      .subscribe((results) => {
         this.data = results;
-        this.resultImages = pictures;
+        console.log(results);
+        this.getPictures()
         console.log('completed');
+        this.startButtonDisabled = false;
+        this.isLoading = false;
       })
   }
 
-  getResults () {
-    this.communicationService.getPictures().subscribe(data => {
-      console.log(data);
-      this.resultImages = data
-    })
+  getPictures () {
+    this.resultImages = [];
+    if (this.form.controls.time.value) {
+      for (let i = 1; i <= this.form.controls.time.value; i++) {
+        this.resultImages.push(`prediction_imageTest${i}.png`)
+      }
+    }
   }
 
   resetTime () {
@@ -103,6 +109,18 @@ export class ExplorationComponent implements OnInit, OnDestroy {
     return this.form.statusChanges.subscribe((status) => {
       this.startButtonDisabled = !(status === 'VALID');
     })
+  }
+
+  clearData() {
+    this.data = {} as Result;
+    this.resultImages = [];
+  }
+
+  saveResults() {
+    if (this.communicationService.username.value && Object.keys(this.data).length) {
+      console.log('save results');
+      this.communicationService.saveResults(this.communicationService.username.value, this.data);
+    }
   }
 
 }

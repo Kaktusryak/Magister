@@ -1,24 +1,74 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { Result } from '../interfaces/interfaces';
+import { Router } from '@angular/router';
 
 @Injectable({
   providedIn: 'root'
 })
 export class CommunicationService {
+  isLogged: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(false);
+  username: BehaviorSubject<string | null> = new BehaviorSubject<string | null>(null);
 
   private apiUrl = 'http://localhost:5000';
 
   hc = inject(HttpClient)
+  router = inject(Router)
 
   constructor() { }
 
-  getPictures () {
-    return this.hc.get(this.apiUrl + '/get_images') as Observable<string[]>
+  startSimulation(dencity: number | null, time: number | null) {
+    return this.hc.post(this.apiUrl + '/start_mapping', { dencity: dencity || 3, time: time || 10 }) as Observable<Result>
   }
 
-  startSimulation() {
-    return this.hc.post(this.apiUrl + '/start_mapping', { dencity: 3, time: 30 })
+  login(username: string, password: string) {
+    return this.hc.post(this.apiUrl + '/login', { username, password }).subscribe({
+      next: (response: any) => {
+        localStorage.setItem('token', response.token);
+        this.isLogged.next(true);
+        this.username.next(username)
+        alert('Login successful');
+        this.router.navigate(['/exploration']);
+      },
+      error: (error) => {
+        alert('Login failed: ' + error.error.message);
+      }
+    })
+  }
+
+  register(username: string, password: string) {
+    return this.hc.post(this.apiUrl + '/register', { username, password }).subscribe({
+      next: () => {
+        this.login(username, password);
+      },
+      error: (error) => {
+        alert('Registration failed: ' + error.error.message);
+      }
+    })
+  }
+
+  saveResults(username: string, result: Result) {
+    return this.hc.post(this.apiUrl + '/save_result', { username, result }).subscribe(data => {
+      console.log(data);
+      
+    })
+  }
+
+  // Функція для отримання токена
+  getToken(): string | null {
+    return localStorage.getItem('token');
+  }
+
+  // Функція для перевірки авторизації
+  isLoggedIn(): boolean {
+    return !!localStorage.getItem('token');
+  }
+
+  unlog() {
+    localStorage.removeItem('token');
+    this.username.next(null);
+    this.isLogged.next(false)
   }
 
 }

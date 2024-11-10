@@ -1,0 +1,30 @@
+<section>
+    <mat-card>
+        <mat-card-content [formGroup]="form">
+            <div class="form-fields">
+                <h5> {{ isSignUp.value ? 'Sign-up' : 'Sign-in' }} </h5>
+                <mat-form-field >
+                    <mat-label>Username</mat-label>
+                    <input matInput type="text" formControlName="username">
+                    <mat-hint>Enter your username</mat-hint>
+                </mat-form-field>
+                <mat-form-field >
+                    <mat-label>Password</mat-label>
+                    <input matInput type="text" formControlName="password">
+                    <mat-hint>Enter your password</mat-hint>
+                </mat-form-field>
+                @if (isSignUp.value) {
+                    <mat-form-field >
+                        <mat-label>Confirm password</mat-label>
+                        <input matInput type="text" formControlName="confirmPassword">
+                        <mat-hint>Confirm your password</mat-hint>
+                    </mat-form-field>
+                }
+                <mat-slide-toggle class="example-margin" [checked]="isSignUp.value" (toggleChange)="isSignUp.next(!isSignUp.value)">
+                    Sign-up
+                </mat-slide-toggle>
+                <button mat-button (click)="submitButton()" [disabled]="form.invalid"> {{ isSignUp.value ? 'Sign-up' : 'Sign-in' }} </button>
+            </div>
+        </mat-card-content>
+    </mat-card>
+</section>

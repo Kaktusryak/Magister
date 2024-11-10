@@ -34,21 +34,29 @@
                 }
             </mat-form-field>
         </form>
+        <button mat-fab extended [disabled]="!communicationService.isLogged.value && !resultImages.length" (click)="saveResults()">
+            <mat-icon>save</mat-icon>
+            Save results
+        </button>
         <button mat-fab extended [disabled]="startButtonDisabled" (click)="getForm()">
             <mat-icon>rocket</mat-icon>
             Start simulation
         </button>
-        <button mat-fab extended (click)="getResults()">
-            <mat-icon>result</mat-icon>
-            get pictures test
-        </button>
-
-
     </div>
+    @if (isLoading) {
+        <mat-spinner></mat-spinner>
+    }
     <div class="results-container">
-        @for (results of resultImages; track results) {
+        @if (resultImages.length) {
+        <app-result-item [isResult]="false" [pictureName]="'map.bmp'">
+        </app-result-item>
+        }
+        
+        @for (image of resultImages; track image;) {
             <app-result-item 
-                [pictureName]="results"
+                [pictureName]="image"
+                [result]="data"
+                [index]="$index"
             >
     
             </app-result-item>

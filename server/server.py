@@ -9,10 +9,21 @@ import threading
 from roboflow import Roboflow
 from queue import Queue
 from flask_cors import CORS
-
+from azure.storage.blob import BlobServiceClient, BlobClient
+from io import BytesIO
+import base64
+from flask_bcrypt import Bcrypt
+from flask_pymongo import PyMongo
+import jwt
+import datetime
 
 app = Flask(__name__)
 CORS(app)
+app.config['MONGO_URI'] = 'mongodb+srv://denis1243qwerty:JGKt0KzZ5fIq48SC@cluster0.5ab04.mongodb.net/Data?retryWrites=true&w=majority'
+app.config['SECRET_KEY'] = 'querty123'
+
+bcrypt = Bcrypt(app)
+mongo = PyMongo(app)
 
 ZONE_SIZE = 10.0  # Зона розміром 10x10 метрів
 SENSOR_THRESHOLD_DISTANCE = 0.5  # Мінімальна відстань для виявлення об'єкта
@@ -29,7 +40,7 @@ async def start_mapping():
         client = RemoteAPIClient()
         sim = client.require('sim')
 
-        sim.loadScene('C:/Users/denis/Desktop/Diploma/Magister/scene/SLAM.ttt')
+        sim.loadScene('C:/Users/denis/Desktop/Diploma/scene/SLAM.ttt')
 
         position_queue = Queue()
 
@@ -51,13 +62,13 @@ async def start_mapping():
         image_saving_thread = threading.Thread(
             target=save_images, 
             args=(
-                sim, 
-                camera_handle, 
-                robot_handle, 
-                workingTime, 
-                position_queue
+                    sim, 
+                    camera_handle, 
+                    robot_handle, 
+                    workingTime, 
+                    position_queue
                 )
-                )
+            )
         image_saving_thread.start()
 
         time.sleep(workingTime)
@@ -65,31 +76,142 @@ async def start_mapping():
         sim.stopSimulation()
         time.sleep(1)
         predictions = await objectDetection(workingTime)
+        save_map()
         # return jsonify({ "status": "Scan complete", "data": measuredData }), 200
         return jsonify({ "status": "Scan complete", "predictions": predictions, "positions": position_queue.get() }), 200
     except Exception as e:
         return jsonify({ "status": "Error", "message": str(e) }), 500
-    
 
-@app.route('/get_images', methods=['GET'])
-def list_images():
-    images = [f"prediction_imageTest{i}.png" for i in range(1, 31)]
-    return jsonify(images)
+@app.route('/test_db')
+def test_db():
+    try:
+        # Спробуйте отримати список колекцій, щоб переконатися, що з'єднання встановлено
+        collections = mongo.db.list_collection_names()
+        return jsonify({"status": "success", "collections": collections})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if mongo.db.users.find_one({'username': username}):
+        return jsonify({'message': 'User already exist'}), 400
+
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    mongo.db.users.insert_one({'username': username, 'password': hashed_password})
+
+    return jsonify({'message': 'Success'}), 201
+
+# Авторизація користувача
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    user = mongo.db.users.find_one({'username': username})
+    if user and bcrypt.check_password_hash(user['password'], password):
+        token = jwt.encode(
+            {'user_id': str(user['_id']), 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
+            app.config['SECRET_KEY'], algorithm='HS256')
+        return jsonify({'token': token})
+
+    return jsonify({'message': 'Wrong data'}), 401
+
+# Захищений маршрут для перевірки токену
+@app.route('/protected', methods=['GET'])
+def protected():
+    token = request.headers.get('Authorization')
+    if not token:
+        return jsonify({'message': 'Token is empty'}), 401
+
+    try:
+        data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        user_id = data['user_id']
+        return jsonify({'message': 'Access granted', 'user_id': user_id})
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Token expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'message': 'Wrong token'}), 401
+
+
+@app.route('/save_result', methods=['POST'])
+def save_result():
+    try:
+        # Отримуємо дані з POST-запиту
+        data = request.get_json()
+        username = data.get('username')
+        result = data.get('result')
+
+        # Перевіряємо, чи передані потрібні дані
+        if not username or not result:
+            return jsonify({'message': 'Username and result are required'}), 400
+
+        # Зберігаємо дані у колекції results
+        mongo.db.results.insert_one({'username': username, 'result': result})
+
+        return jsonify({'message': 'Data saved successfully'}), 201
+    except Exception as e:
+        return jsonify({'message': 'Error saving data', 'error': str(e)}), 500
 
 async def objectDetection(times):
     rf = Roboflow(api_key="AxJQTHdmCRqWytYDXxOs")
     project = rf.workspace().project("environment_cubes")
     model = project.version(1).model
     results = []
+    # Define connection string and API version
+    connection_string = (
+        'AccountName=devstoreaccount1;'
+        'AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;'
+        'DefaultEndpointsProtocol=http;'
+        'BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;'
+        'QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;'
+        'TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;'
+    )
+    api_version = '2019-02-02'  # Define your desired API version
+    blob_service_client = BlobServiceClient.from_connection_string(
+        connection_string, api_version=api_version
+    )
+    container_client = blob_service_client.get_container_client('pictures')
+    
+    # Delete all existing blobs in the container
+    blobs = container_client.list_blobs()
+    for blob in blobs:
+        container_client.delete_blob(blob)
+
     for i in range(1, times + 1):
             print(f'image {i}')
-            model.predict(f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', confidence=40, overlap=30).save(f'C:/Users/denis/Desktop/Diploma/Magister/diploma/public/assets/images/prediction_imageTest{i}.png')
-            result = model.predict(f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', confidence=40, overlap=30).json()
+            model.predict(f'C:/Users/denis/Desktop/Diploma/images/imageTest{i}.png', confidence=40, overlap=30).save(f'C:/Users/denis/Desktop/Diploma/images/prediction_imageTest{i}.png')
+            result = model.predict(f'C:/Users/denis/Desktop/Diploma/images/imageTest{i}.png', confidence=40, overlap=30).json()
             results.append(result)
+            blob_client = BlobClient.from_connection_string(
+                conn_str='AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;DefaultEndpointsProtocol=http;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;',
+                container_name='pictures',
+                blob_name=f'prediction_imageTest{i}.png',
+                api_version='2019-02-02'
+                )
+            with open(f'C:/Users/denis/Desktop/Diploma/images/prediction_imageTest{i}.png', 'rb') as img:
+                blob_client.upload_blob(img)
+                print(i)
+
 
     print('OD')
     return results
+
+
+def save_map():
+    blob_client = BlobClient.from_connection_string(
+                    conn_str='AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;DefaultEndpointsProtocol=http;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;',
+                    container_name='pictures',
+                    blob_name='map.bmp',
+                    api_version='2019-02-02')
+    print('save map')             
+    with open('C:/Program Files/CoppeliaRobotics/CoppeliaSimEdu/map.bmp', 'rb') as map:
+        blob_client.upload_blob(map)
+        print(map)
 
 
 def save_images(sim, camera_handle, robot_handle, times, position_queue):
@@ -100,16 +222,38 @@ def save_images(sim, camera_handle, robot_handle, times, position_queue):
             i = i + 1
 
             position = sim.getObjectPosition(robot_handle)
-            positions.append(position)
+            orientation = sim.getObjectOrientation(robot_handle)
+            print(orientation)
+            distancesI = getDistance(sim)
+            positions.append({'position': position, 'orientation': orientation, 'distances': distancesI})
+
 
             imageBuffer, resolutionX, resolutionY = sim.getVisionSensorCharImage(camera_handle)
-            sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/Magister/diploma/public/assets/images/imageTest{i}.png', 100)
+            sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/images/imageTest{i}.png', 100)
             
             position_queue.put(positions)
             time.sleep(1)  # Wait for 1 second before capturing the next image
         except Exception as e:
             print(e)
     return positions
+
+
+def getDistance(sim):
+    distances = []
+
+    for i in range(1,6):
+        sensor_handle = sim.getObjectHandle(f'/Proximity_sensor{i}')
+        print(sensor_handle)
+        # Read the proximity sensor
+        result, dist, detected_point, obj_handle, normal_vector = sim.readProximitySensor(sensor_handle)
+        print(result)
+        print(dist)
+        if result == 1:
+            distances.append(dist)
+        else:
+            distances.append(None)
+
+    return distances
 
 
 def create_obstacles(sim, dencity):
