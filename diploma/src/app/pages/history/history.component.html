@@ -1,0 +1,20 @@
+<section>
+    <div class="results-container">
+        @if(results.length) {
+            @for (result of results; track result) {
+                <mat-expansion-panel>
+                    <mat-expansion-panel-header>
+                        Results of {{ data[$index].username }} of {{ data[$index].timestamp || '' }}
+                    </mat-expansion-panel-header>
+                    @for (res of result.positions; track res;) {
+                        <app-result-item [result]="result" [index]="$index">
+                
+                        </app-result-item>
+                        }
+                </mat-expansion-panel>
+                
+            }
+        }
+
+    </div>
+</section>

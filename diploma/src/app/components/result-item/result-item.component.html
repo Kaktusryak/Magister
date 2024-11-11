@@ -4,9 +4,11 @@
     </mat-card-header>
     <mat-card-content>
         <div class="item-container">
-            <div>
-                <img mat-card-image [src]="path + pictureName" alt="Image">
-            </div>
+            @if(pictureName) {
+                <div>
+                    <img mat-card-image [src]="path + pictureName" alt="Image">
+                </div>
+            }
             @if (isResult) {
                 <div class="data">
                     <mat-card>

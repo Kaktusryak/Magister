@@ -2,13 +2,13 @@
     <div>
         <a mat-flat-button routerLink="home">Home</a>
         <a mat-flat-button routerLink="exploration">Exploration</a>
+        @if (communicationService.isLogged.value) {
+            <a mat-flat-button routerLink="history">History</a>
+        }
     </div>
     <div>
-        @if (communicationService.username.value) {
-            {{ communicationService.username.value }}
-        }
         @if (communicationService.isLogged.value) {
-            <button mat-button (click)="unlog()">Unlog</button>
+            <button mat-flat-button (click)="unlog()"> {{ communicationService.username.value }}: Unlog</button>
         }
         @else {
             <a mat-flat-button routerLink="auth">Authorization</a>

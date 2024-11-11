@@ -1,8 +1,9 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { Result } from '../interfaces/interfaces';
 import { Router } from '@angular/router';
+import { ProtectedResponse } from '../interfaces/interfaces'
 
 @Injectable({
   providedIn: 'root'
@@ -10,6 +11,8 @@ import { Router } from '@angular/router';
 export class CommunicationService {
   isLogged: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(false);
   username: BehaviorSubject<string | null> = new BehaviorSubject<string | null>(null);
+
+  headers = new HttpHeaders().set('Authorization', `${this.getToken()}`);
 
   private apiUrl = 'http://localhost:5000';
 
@@ -48,11 +51,32 @@ export class CommunicationService {
     })
   }
 
+  restoreSession() {
+    if (this.getToken()) {
+      (this.hc.get(this.apiUrl + '/protected', { headers: this.headers }) as Observable<ProtectedResponse>).subscribe({
+        next:(data: ProtectedResponse) => {
+          console.log(data);
+          this.isLogged.next(true);
+          this.username.next(data.username)
+          
+        },
+        error: (error) => {
+          this.unlog()
+        }
+      })
+    }
+
+  }
+
   saveResults(username: string, result: Result) {
     return this.hc.post(this.apiUrl + '/save_result', { username, result }).subscribe(data => {
       console.log(data);
       
     })
+  }
+
+  getSavedResults() {
+    return this.hc.get(this.apiUrl + '/results/' + this.username.value) as Observable<{ data: { result: Result, username: string, timestamp: string}[] , status: string }>
   }
 
   // Функція для отримання токена

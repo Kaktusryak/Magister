@@ -115,7 +115,7 @@ def login():
     user = mongo.db.users.find_one({'username': username})
     if user and bcrypt.check_password_hash(user['password'], password):
         token = jwt.encode(
-            {'user_id': str(user['_id']), 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
+            {'user_id': str(user['_id']), 'username': username, 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
             app.config['SECRET_KEY'], algorithm='HS256')
         return jsonify({'token': token})
 
@@ -125,13 +125,17 @@ def login():
 @app.route('/protected', methods=['GET'])
 def protected():
     token = request.headers.get('Authorization')
+
     if not token:
         return jsonify({'message': 'Token is empty'}), 401
+    
 
     try:
         data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         user_id = data['user_id']
-        return jsonify({'message': 'Access granted', 'user_id': user_id})
+        username = data['username']
+        print(username)
+        return jsonify({'message': 'Access granted', 'user_id': user_id, 'username': username})
     except jwt.ExpiredSignatureError:
         return jsonify({'message': 'Token expired'}), 401
     except jwt.InvalidTokenError:
@@ -151,11 +155,28 @@ def save_result():
             return jsonify({'message': 'Username and result are required'}), 400
 
         # Зберігаємо дані у колекції results
-        mongo.db.results.insert_one({'username': username, 'result': result})
+        mongo.db.results.insert_one({'username': username, 'result': result, 'timestamp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)})
 
         return jsonify({'message': 'Data saved successfully'}), 201
     except Exception as e:
         return jsonify({'message': 'Error saving data', 'error': str(e)}), 500
+
+
+
+@app.route('/results/<username>', methods=['GET'])
+def get_results(username):
+    try:
+        # Знаходимо всі результати для вказаного користувача
+        user_results = list(mongo.db.results.find({'username': username}))
+
+        # Перетворюємо дані з MongoDB у звичайний формат JSON
+        results = [{'username': result['username'], 'result': result['result'], 'timestamp': result['timestamp'].isoformat() if 'timestamp' in result else None} for result in user_results]
+
+        # Повертаємо результати у вигляді JSON
+        return jsonify({'status': 'success', 'data': results}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 async def objectDetection(times):
     rf = Roboflow(api_key="AxJQTHdmCRqWytYDXxOs")
@@ -163,39 +184,39 @@ async def objectDetection(times):
     model = project.version(1).model
     results = []
     # Define connection string and API version
-    connection_string = (
-        'AccountName=devstoreaccount1;'
-        'AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;'
-        'DefaultEndpointsProtocol=http;'
-        'BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;'
-        'QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;'
-        'TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;'
-    )
-    api_version = '2019-02-02'  # Define your desired API version
-    blob_service_client = BlobServiceClient.from_connection_string(
-        connection_string, api_version=api_version
-    )
-    container_client = blob_service_client.get_container_client('pictures')
+    # connection_string = (
+    #     'AccountName=devstoreaccount1;'
+    #     'AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;'
+    #     'DefaultEndpointsProtocol=http;'
+    #     'BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;'
+    #     'QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;'
+    #     'TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;'
+    # )
+    # api_version = '2019-02-02'  # Define your desired API version
+    # blob_service_client = BlobServiceClient.from_connection_string(
+    #     connection_string, api_version=api_version
+    # )
+    # container_client = blob_service_client.get_container_client('pictures')
     
     # Delete all existing blobs in the container
-    blobs = container_client.list_blobs()
-    for blob in blobs:
-        container_client.delete_blob(blob)
+    # blobs = container_client.list_blobs()
+    # for blob in blobs:
+    #     container_client.delete_blob(blob)
 
     for i in range(1, times + 1):
             print(f'image {i}')
-            model.predict(f'C:/Users/denis/Desktop/Diploma/images/imageTest{i}.png', confidence=40, overlap=30).save(f'C:/Users/denis/Desktop/Diploma/images/prediction_imageTest{i}.png')
-            result = model.predict(f'C:/Users/denis/Desktop/Diploma/images/imageTest{i}.png', confidence=40, overlap=30).json()
+            model.predict(f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', confidence=40, overlap=30).save(f'C:/Users/denis/Desktop/Diploma/images/prediction_imageTest{i}.png')
+            result = model.predict(f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', confidence=40, overlap=30).json()
             results.append(result)
-            blob_client = BlobClient.from_connection_string(
-                conn_str='AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;DefaultEndpointsProtocol=http;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;',
-                container_name='pictures',
-                blob_name=f'prediction_imageTest{i}.png',
-                api_version='2019-02-02'
-                )
-            with open(f'C:/Users/denis/Desktop/Diploma/images/prediction_imageTest{i}.png', 'rb') as img:
-                blob_client.upload_blob(img)
-                print(i)
+            # blob_client = BlobClient.from_connection_string(
+            #     conn_str='AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;DefaultEndpointsProtocol=http;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;',
+            #     container_name='pictures',
+            #     blob_name=f'prediction_imageTest{i}.png',
+            #     api_version='2019-02-02'
+            #     )
+            # with open(f'C:/Users/denis/Desktop/Diploma/images/prediction_imageTest{i}.png', 'rb') as img:
+            #     blob_client.upload_blob(img)
+            #     print(i)
 
 
     print('OD')
@@ -203,15 +224,15 @@ async def objectDetection(times):
 
 
 def save_map():
-    blob_client = BlobClient.from_connection_string(
-                    conn_str='AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;DefaultEndpointsProtocol=http;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;',
-                    container_name='pictures',
-                    blob_name='map.bmp',
-                    api_version='2019-02-02')
+    # blob_client = BlobClient.from_connection_string(
+    #                 conn_str='AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;DefaultEndpointsProtocol=http;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;',
+    #                 container_name='pictures',
+    #                 blob_name='map.bmp',
+    #                 api_version='2019-02-02')
     print('save map')             
-    with open('C:/Program Files/CoppeliaRobotics/CoppeliaSimEdu/map.bmp', 'rb') as map:
-        blob_client.upload_blob(map)
-        print(map)
+    # with open('C:/Program Files/CoppeliaRobotics/CoppeliaSimEdu/map.bmp', 'rb') as map:
+    #     blob_client.upload_blob(map)
+    #     print(map)
 
 
 def save_images(sim, camera_handle, robot_handle, times, position_queue):
@@ -229,7 +250,7 @@ def save_images(sim, camera_handle, robot_handle, times, position_queue):
 
 
             imageBuffer, resolutionX, resolutionY = sim.getVisionSensorCharImage(camera_handle)
-            sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/images/imageTest{i}.png', 100)
+            sim.saveImage(imageBuffer, [resolutionX, resolutionY], 0, f'C:/Users/denis/Desktop/Diploma/Magister/images/imageTest{i}.png', 100)
             
             position_queue.put(positions)
             time.sleep(1)  # Wait for 1 second before capturing the next image

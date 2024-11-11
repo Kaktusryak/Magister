@@ -32,3 +32,9 @@ export interface Prediction {
     x: number,
     y: number
 }
+
+export interface ProtectedResponse {
+    message: string,
+    user_id: string,
+    username: string
+}
